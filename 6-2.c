@@ -1,110 +1,122 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <pthread.h>
 
 #define MAX_SIZE 100
+#define MAX_THREADS 4
 
-// Структура для хранения результатов
 typedef struct {
-    int indices[MAX_SIZE];
-    int count;
-} SearchResults;
+    int* array;
+    int start;
+    int end;
+    int target;
+    int* local_results;
+    int* local_count;
+    pthread_barrier_t* barrier;
+} ThreadData;
 
-// Глобальные переменные
-SearchResults main_results = {0};
-SearchResults worker_results = {0};
-pthread_barrier_t barrier;
-
-// Функция поиска (используется обоими потоками)
-void search_section(int* array, int start, int end, int target, SearchResults* res) {
-    for (int i = start; i < end; i++) {
-        if (array[i] == target) {
-            res->indices[res->count++] = i;
+void* search_thread(void* arg) {
+    ThreadData* data = (ThreadData*)arg;
+    
+    // Поиск элементов в своей части массива
+    for (int i = data->start; i < data->end; i++) {
+        if (data->array[i] == data->target) {
+            data->local_results[(*data->local_count)++] = i;
         }
     }
-}
-    
-// Функция рабочего потока
-void* worker_func(void* arg) {
-    int* params = (int*)arg;
-    int* array = &params[2];
-    int target = params[0];
-    int size = params[1];
-    
-    // Поиск во второй половине массива
-    search_section(array, size/2, size, target, &worker_results);
-    
-    // Ожидание основного потока
-    pthread_barrier_wait(&barrier);
+
+    // Ожидание у барьера
+    pthread_barrier_wait(data->barrier);
     return NULL;
 }
 
-int main() {
-    int array[] = {1, 2, 3, 3, 2, 2, 4, 5, 6, 6, 6, 66, 11, 22};
-    int size = sizeof(array)/sizeof(array[0]);
-    int target;
-    
-    printf("Массив: ");
-    for (int i = 0; i < size; i++) printf("%d ", array[i]);
-    printf("\nВведите элемент для поиска: ");
-    scanf("%d", &target);
-    
-    // Инициализация барьера (2 потока)
-    pthread_barrier_init(&barrier, NULL, 2);
-    
-    // Подготовка данных для потока [target, size, элементы...]
-    int thread_data[size+2];
-    thread_data[0] = target;
-    thread_data[1] = size;
-    for (int i = 0; i < size; i++) thread_data[i+2] = array[i];
-    
-    pthread_t worker;
-    pthread_create(&worker, NULL, worker_func, thread_data);
-    
-    // Основной поток обрабатывает первую половину массива
-    search_section(array, 0, size/2, target, &main_results);
-    
-    // Ожидание рабочего потока
-    pthread_barrier_wait(&barrier);
-    
-    // Объединение результатов
-    int total_results[MAX_SIZE];
-    int total_count = 0;
-    
-    // Копируем результаты из основного потока
-    for (int i = 0; i < main_results.count; i++) {
-        total_results[total_count++] = main_results.indices[i];
-    }
-    
-    // Копируем результаты из рабочего потока
-    for (int i = 0; i < worker_results.count; i++) {
-        total_results[total_count++] = worker_results.indices[i];
-    }
-    
-    // Сортировка
-    for (int i = 0; i < total_count-1; i++) {
-        for (int j = 0; j < total_count-i-1; j++) {
-            if (total_results[j] > total_results[j+1]) {
-                int temp = total_results[j];
-                total_results[j] = total_results[j+1];
-                total_results[j+1] = temp;
+void bubble_sort(int* arr, int size) {
+    for (int i = 0; i < size - 1; i++) {
+        for (int j = 0; j < size - i - 1; j++) {
+            if (arr[j] > arr[j + 1]) {
+                int temp = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = temp;
             }
         }
     }
-    
-    // Вывод результатов
-    if (total_count == 0) {
-        printf("Элемент не найден\n");
-    } else {
-        printf("Найдено %d вхождений:\n", total_count);
-        for (int i = 0; i < total_count; i++) {
-            printf("%d ", total_results[i]);
-        }
-        printf("\n");
+}
+
+int main() {
+    int a[] = {1, 2, 3, 3, 2, 2, 4, 5, 6, 6, 6, 66, 11, 22};
+    int size = sizeof(a) / sizeof(a[0]);
+    int target;
+    int k=-1;
+    int num_threads;
+    printf("Введите число потоков(меньше 4)\t");
+    scanf("%d", &num_threads);
+    if(num_threads>MAX_THREADS)
+    {
+        printf("ERROR\n");
+        exit;
     }
-    
-    // Очистка
-    pthread_join(worker, NULL);
-    pthread_barrier_destroy(&barrier);
-    
-    return 0;
+    else{
+        printf("Массив: ");
+        for (int i = 0; i < size; i++) printf("%d ", a[i]);
+        printf("\nВведите элемент для поиска: ");
+        scanf("%d", &target);
+
+        // Инициализация барьера
+        pthread_barrier_t barrier;
+        pthread_barrier_init(&barrier, NULL, num_threads + 1); // +1 для основного потока
+
+        // Выделение памяти для результатов каждого потока
+        int all_results[MAX_THREADS][MAX_SIZE];
+        int counts[MAX_THREADS] = {0};
+        int final_results[MAX_SIZE];
+        int final_count = 0;
+
+        pthread_t threads[MAX_THREADS];
+        ThreadData thread_data[MAX_THREADS];
+
+        // Создание потоков
+        int chunk_size = size / num_threads;
+        for (int i = 0; i < num_threads; i++) {
+            thread_data[i].array = a;
+            thread_data[i].start = i * chunk_size;
+            thread_data[i].end = (i == num_threads - 1) ? size : (i + 1) * chunk_size;
+            thread_data[i].target = target;
+            thread_data[i].local_results = all_results[i];
+            thread_data[i].local_count = &counts[i];
+            thread_data[i].barrier = &barrier;
+
+            pthread_create(&threads[i], NULL, search_thread, &thread_data[i]);
+        }
+
+        // Ожидание завершения поиска
+        pthread_barrier_wait(&barrier);
+
+        // Сбор результатов из всех потоков
+        for (int i = 0; i < num_threads; i++) {
+            for (int j = 0; j < counts[i]; j++) {
+                final_results[final_count++] = all_results[i][j];
+            }
+        }
+
+        // Сортировка результатов
+        bubble_sort(final_results, final_count);
+
+        // Вывод результатов
+        if (final_count == 0) {
+            printf("Элемент не найден %d\n", k);
+        } else {
+            printf("Найдено %d вхождений:\n", final_count);
+            for (int i = 0; i < final_count; i++) {
+                printf("Индекс: %d\n", final_results[i]);
+            }
+        }
+
+        // Очистка ресурсов
+        for (int i = 0; i < num_threads; i++) {
+            pthread_join(threads[i], NULL);
+        }
+        pthread_barrier_destroy(&barrier);
+
+        return 0;
+    }
 }
