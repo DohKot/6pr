@@ -28,13 +28,13 @@ void* search_thread(void* arg) {
 }
 
 int main() {
-    int array[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    int array[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10};
     int size = sizeof(array) / sizeof(array[0]);
     int target;
     int result = -1;
     int num_threads;
 
-    printf("Введите число потоков (1-4): ");
+    printf("Введите число потоков (меньше 4) ");
     scanf("%d", &num_threads);
 
     if (num_threads < 1 || num_threads > MAX_THREADS) {
