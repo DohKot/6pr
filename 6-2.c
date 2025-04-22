@@ -17,7 +17,7 @@ typedef struct {
 
 void* search_thread(void* arg) {
     ThreadData* data = (ThreadData*)arg;
-    
+
     // Поиск элементов в своей части массива
     for (int i = data->start; i < data->end; i++) {
         if (data->array[i] == data->target) {
@@ -48,9 +48,9 @@ int main() {
     int target;
     int k=-1;
     int num_threads;
-    printf("Введите число потоков(меньше 4)\t");
+    printf("Введите число потоков (меньше 4) ");
     scanf("%d", &num_threads);
-    if(num_threads>MAX_THREADS)
+    if(num_threads < 1 || num_threads>MAX_THREADS)
     {
         printf("ERROR\n");
         exit;
@@ -79,7 +79,13 @@ int main() {
         for (int i = 0; i < num_threads; i++) {
             thread_data[i].array = a;
             thread_data[i].start = i * chunk_size;
-            thread_data[i].end = (i == num_threads - 1) ? size : (i + 1) * chunk_size;
+
+            if (i == num_threads - 1) {
+                thread_data[i].end = size;
+            } else {
+                thread_data[i].end = (i + 1) * chunk_size;
+            }
+
             thread_data[i].target = target;
             thread_data[i].local_results = all_results[i];
             thread_data[i].local_count = &counts[i];
